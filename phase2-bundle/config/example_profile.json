@@ -1,0 +1,50 @@
+{
+  "user_id": "demo-user-001",
+  "name": "Jane Doe",
+  "location": {
+    "address": "123 Example St, Baton Rouge, LA 70803",
+    "latitude": 30.4133,
+    "longitude": -91.1800,
+    "nws_zone_id": "LAZ036",
+    "county_fips": "22033"
+  },
+  "home": {
+    "type": "apartment",
+    "floor_level": 1,
+    "elevated": false,
+    "flood_zone": "AE",
+    "has_generator": false,
+    "has_storm_shutters": false
+  },
+  "vehicle": {
+    "owns_vehicle": true,
+    "clearance": "low",
+    "four_wheel_drive": false
+  },
+  "medical": {
+    "mobility_limited": false,
+    "oxygen_dependent": false,
+    "refrigerated_medication": false,
+    "chronic_conditions": []
+  },
+  "emergency_contacts": [
+    {
+      "name": "John Doe",
+      "relationship": "spouse",
+      "phone": "+15551234567",
+      "notify_on": ["high", "critical"]
+    },
+    {
+      "name": "Alice Smith",
+      "relationship": "parent",
+      "phone": "+15559876543",
+      "notify_on": ["critical"]
+    }
+  ],
+  "preferences": {
+    "language": "en",
+    "timezone": "America/Chicago",
+    "quiet_hours": { "start": "22:00:00", "end": "07:00:00" },
+    "allow_smart_home_actions": true
+  }
+}
