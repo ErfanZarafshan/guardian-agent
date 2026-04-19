@@ -15,6 +15,7 @@ PACKAGES = [
     "guardian.config",
     "guardian.logging_setup",
     "guardian.profile",
+    "guardian.profile_cli",
     "guardian.agent",
     "guardian.weather",
     "guardian.weather.nws",
