@@ -1,0 +1,56 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- IDE / editors ---
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# --- Testing / tooling ---
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# --- Notebooks ---
+.ipynb_checkpoints/
+
+# --- Secrets (NEVER COMMIT) ---
+.env
+.env.local
+*.pem
+*.key
+
+# --- Project data / artifacts ---
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+models/*
+!models/.gitkeep
+
+# --- Local user profile (may contain PII) ---
+config/my_profile.json
+config/*_profile.json
+!config/example_profile.json
+
+# --- Logs ---
+*.log
+logs/
