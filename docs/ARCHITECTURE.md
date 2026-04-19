@@ -87,7 +87,7 @@ HazardSeverity ──► RiskLevel ◄── HomeFloor
 | Phase | Component                       | Status        |
 | ----- | ------------------------------- | ------------- |
 | 1     | Scaffolding                     | **Done**      |
-| 2     | User profile                    | Not started   |
+| 2     | User profile                    | **Done**      |
 | 3     | Weather data layer              | Not started   |
 | 4     | ML threat classifier            | Not started   |
 | 5     | Bayesian risk engine            | Not started   |
