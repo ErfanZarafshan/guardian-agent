@@ -286,10 +286,17 @@ class ThreatClassifier:
         Used at runtime when we don't have a recent local event log loaded —
         the agent falls back to base-rate-by-season-and-place.
         """
-        empty = pd.DataFrame(
-            columns=["BEGIN_DATE_TIME", "county_fips", "is_severe", "damage_property_usd"]
-        )
-        empty["BEGIN_DATE_TIME"] = pd.to_datetime(empty["BEGIN_DATE_TIME"])
+        # Construct the empty events DataFrame with explicit datetime64[ns]
+        # dtype. Newer pandas versions infer datetime64[s] for empty
+        # to_datetime calls, which then fails comparison against stdlib
+        # datetime in compute_cell_features. Specifying ns explicitly avoids
+        # that mismatch.
+        empty = pd.DataFrame({
+            "BEGIN_DATE_TIME": pd.Series(dtype="datetime64[ns]"),
+            "county_fips": pd.Series(dtype="object"),
+            "is_severe": pd.Series(dtype="bool"),
+            "damage_property_usd": pd.Series(dtype="float64"),
+        })
         return self.score_cell(empty, state, county_fips, observed_at)
 
 

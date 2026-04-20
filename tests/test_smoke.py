@@ -28,6 +28,7 @@ PACKAGES = [
     "guardian.risk.bayesian",
     "guardian.risk.classifier",
     "guardian.risk.features",
+    "guardian.risk.risk_engine",
     "guardian.risk.data",
     "guardian.risk.data.storm_events",
     "guardian.risk.data.synthetic",

@@ -317,3 +317,21 @@ def test_classifier_save_unfitted_fails(tmp_path: Path) -> None:
     clf = ThreatClassifier()
     with pytest.raises(RuntimeError):
         clf.save(tmp_path / "x.joblib")
+
+
+def test_score_blank_works_on_newer_pandas(trained_classifier: ThreatClassifier) -> None:
+    """Regression test for the datetime64[s] vs stdlib datetime mismatch.
+
+    Newer pandas (>=2.2) infers datetime64[s] for empty pd.to_datetime calls.
+    Comparing such a Series to a Python datetime raises
+    'Invalid comparison between dtype=datetime64[s] and datetime'. score_blank
+    must construct its empty DataFrame with explicit datetime64[ns] dtype to
+    avoid this.
+    """
+    # Should not raise.
+    score = trained_classifier.score_blank(
+        state="LOUISIANA",
+        county_fips="22033",
+        observed_at=datetime(2024, 7, 15, 12, 0, 0),
+    )
+    assert 0.0 <= score.probability <= 1.0
