@@ -93,5 +93,5 @@ HazardSeverity ──► RiskLevel ◄── HomeFloor
 | 5     | Bayesian risk engine            | **Done**      |
 | 6     | Planner                         | **Done**      |
 | 7     | Output layer                    | **Done**      |
-| 8     | Main loop                       | Not started   |
+| 8     | Main loop                       | **Done**      |
 | 9     | Demo + write-up                 | Not started   |

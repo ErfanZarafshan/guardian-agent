@@ -17,6 +17,7 @@ PACKAGES = [
     "guardian.profile",
     "guardian.profile_cli",
     "guardian.agent",
+    "guardian.loop",
     "guardian.weather",
     "guardian.weather.http",
     "guardian.weather.nws",
