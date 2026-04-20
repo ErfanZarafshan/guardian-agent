@@ -320,18 +320,34 @@ def test_classifier_save_unfitted_fails(tmp_path: Path) -> None:
 
 
 def test_score_blank_works_on_newer_pandas(trained_classifier: ThreatClassifier) -> None:
-    """Regression test for the datetime64[s] vs stdlib datetime mismatch.
+    """Regression test for two distinct datetime issues seen on pandas 2.x +
+    Python 3.13:
 
-    Newer pandas (>=2.2) infers datetime64[s] for empty pd.to_datetime calls.
-    Comparing such a Series to a Python datetime raises
-    'Invalid comparison between dtype=datetime64[s] and datetime'. score_blank
-    must construct its empty DataFrame with explicit datetime64[ns] dtype to
-    avoid this.
+      1. Empty pd.to_datetime() calls infer dtype=datetime64[s], which
+         can't be compared against stdlib datetime. Fixed by constructing
+         the empty DataFrame with explicit datetime64[ns].
+      2. tz-aware stdlib datetime can't be compared against naive
+         datetime64[ns] Series. Fixed by stripping tzinfo on entry to
+         compute_cell_features / label_cell.
+
+    This test exercises both paths by passing a timezone-aware datetime —
+    which is what the agent does in production, since WeatherObservation
+    uses datetime.now(timezone.utc).
     """
-    # Should not raise.
+    from datetime import timezone as tz_mod
+
+    # Should not raise — tz-aware datetime is the realistic case.
     score = trained_classifier.score_blank(
+        state="LOUISIANA",
+        county_fips="22033",
+        observed_at=datetime(2024, 7, 15, 12, 0, 0, tzinfo=tz_mod.utc),
+    )
+    assert 0.0 <= score.probability <= 1.0
+
+    # And the naive case should still work too.
+    score_naive = trained_classifier.score_blank(
         state="LOUISIANA",
         county_fips="22033",
         observed_at=datetime(2024, 7, 15, 12, 0, 0),
     )
-    assert 0.0 <= score.probability <= 1.0
+    assert 0.0 <= score_naive.probability <= 1.0

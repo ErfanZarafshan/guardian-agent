@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pandas as pd
@@ -108,6 +108,13 @@ def compute_cell_features(
     observed_at: datetime,
 ) -> CellFeatures:
     """Compute features for one (county, time) cell using its event history."""
+    # Normalize observed_at to a naive (timezone-unaware) datetime so it can be
+    # compared against pandas' naive datetime64 Series. Historical Storm Events
+    # data is naive; weather observations flowing in from the agent are
+    # tz-aware (UTC). We convert to UTC then drop the tzinfo.
+    if observed_at.tzinfo is not None:
+        observed_at = observed_at.astimezone(timezone.utc).replace(tzinfo=None)
+
     short_window_start = observed_at - timedelta(days=LOOKBACK_DAYS_SHORT)
     long_window_start = observed_at - timedelta(days=LOOKBACK_DAYS_LONG)
     advisory_window_start = observed_at - timedelta(hours=24)
@@ -168,6 +175,8 @@ def label_cell(
     lookahead_hours: int = LOOKAHEAD_HOURS,
 ) -> int:
     """Label = 1 iff a severe event begins in `county_fips` within lookahead."""
+    if observed_at.tzinfo is not None:
+        observed_at = observed_at.astimezone(timezone.utc).replace(tzinfo=None)
     horizon = observed_at + timedelta(hours=lookahead_hours)
     if "county_fips" not in events.columns:
         return 0
