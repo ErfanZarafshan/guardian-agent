@@ -38,6 +38,8 @@ PACKAGES = [
     "guardian.output",
     "guardian.output.sms",
     "guardian.output.smart_home",
+    "guardian.output.console",
+    "guardian.output.dispatch",
 ]
 
 

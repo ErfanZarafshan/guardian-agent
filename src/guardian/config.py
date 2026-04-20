@@ -32,6 +32,10 @@ class Config:
     twilio_auth_token: str
     twilio_from_number: str
 
+    # --- SMS safety rails ---
+    sms_dry_run: bool           # if True, SMS is logged instead of sent
+    sms_max_per_run: int        # hard cap on real SMS per dispatch call
+
     # --- Runtime ---
     poll_interval_seconds: int
     log_level: str
@@ -64,6 +68,8 @@ def get_config() -> Config:
         twilio_account_sid=os.getenv("TWILIO_ACCOUNT_SID", ""),
         twilio_auth_token=os.getenv("TWILIO_AUTH_TOKEN", ""),
         twilio_from_number=os.getenv("TWILIO_FROM_NUMBER", ""),
+        sms_dry_run=os.getenv("SMS_DRY_RUN", "true").strip().lower() in ("1", "true", "yes"),
+        sms_max_per_run=int(os.getenv("SMS_MAX_PER_RUN", "10")),
         poll_interval_seconds=int(os.getenv("POLL_INTERVAL_SECONDS", "300")),
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
     )
