@@ -253,6 +253,29 @@ def test_inference_argmax_consistent_with_posterior(infer: RiskInference) -> Non
     assert a.argmax_prob == a.posterior[a.argmax]
 
 
+def test_inference_tornado_vs_tropical_stay_distinguishable(infer: RiskInference) -> None:
+    """Regression test: two severe-but-distinct scenarios should produce
+    different posteriors even when the classifier pushes EmergingThreat=High.
+
+    Earlier versions of _hazard_impact_distribution had too few buckets at
+    the high end; scores of 0.87 (tropical + high threat) and 1.00 (tornado
+    + high threat) both mapped to the identical distribution, causing the
+    demo's tornado and tropical scenarios to show byte-for-byte identical
+    posteriors.
+    """
+    base = dict(home_floor="Upper", vehicle_clearance="High",
+                mobility_limited=False, threat="High")
+    tornado = _query(infer, severity="Extreme", urgency="Immediate",
+                     wind="Damaging", precip="Heavy", **base)
+    tropical = _query(infer, severity="Severe", urgency="Expected",
+                      wind="Damaging", precip="Extreme", **base)
+    # Tornado should have more Critical mass than tropical.
+    assert tornado["Critical"] > tropical["Critical"] + 0.03, (
+        f"Expected tornado Critical > tropical Critical; got "
+        f"tornado={tornado['Critical']:.3f}, tropical={tropical['Critical']:.3f}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # encode_evidence translation
 # ---------------------------------------------------------------------------

@@ -124,6 +124,10 @@ def _hazard_impact_distribution(score: float) -> tuple[float, float, float, floa
     Rows are designed to (a) sum to 1, (b) put most mass on the matching
     category, (c) spread some mass to neighbors to encode epistemic
     uncertainty about the deterministic mapping.
+
+    Six buckets across [0, 1] — finer at the high end so that different
+    severe-but-distinct situations (e.g. score 0.80 tropical storm vs
+    score 1.00 tornado) produce visibly different distributions.
     """
     if score < 0.10:
         return (0.85, 0.10, 0.04, 0.01, 0.00)
@@ -131,9 +135,11 @@ def _hazard_impact_distribution(score: float) -> tuple[float, float, float, floa
         return (0.30, 0.50, 0.15, 0.04, 0.01)
     if score < 0.50:
         return (0.10, 0.30, 0.45, 0.13, 0.02)
-    if score < 0.75:
-        return (0.03, 0.10, 0.30, 0.45, 0.12)
-    return (0.00, 0.03, 0.10, 0.40, 0.47)
+    if score < 0.70:
+        return (0.03, 0.12, 0.32, 0.42, 0.11)
+    if score < 0.90:
+        return (0.01, 0.05, 0.18, 0.46, 0.30)
+    return (0.00, 0.02, 0.08, 0.35, 0.55)
 
 
 # ---------- RiskLevel half ----------
