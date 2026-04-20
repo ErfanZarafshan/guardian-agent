@@ -249,6 +249,28 @@ def _render_one(engine: RiskEngine, label: str, observation: WeatherObservation)
         f"({r_b.assessment.argmax_prob:.1%})"
     )
 
+    # ---- Planner recommendations for both users ----
+    from guardian.planning import plan_actions
+
+    for user_label, profile, result in (
+        (f"User A ({baseline.name})", baseline, r_a),
+        (f"User B ({vulnerable.name})", vulnerable, r_b),
+    ):
+        actions = plan_actions(result.assessment.argmax, profile, observation)
+        console.print(f"\n  [bold]Actions for {user_label}:[/bold]")
+        for i, act in enumerate(actions, 1):
+            kind_str = act.kind.value.replace("_", " ").upper()
+            console.print(f"    {i}. [cyan]{kind_str}[/cyan] ({act.channel.value})")
+            console.print(f"       [dim]why:[/dim] {act.rationale}")
+            # Truncate very long messages for the demo
+            msg = act.message if len(act.message) < 180 else act.message[:177] + "..."
+            console.print(f"       [dim]msg:[/dim] {msg}")
+            if act.recipients:
+                console.print(
+                    f"       [dim]→ SMS to:[/dim] "
+                    f"{', '.join(act.recipients)}"
+                )
+
 
 # ---------------------------------------------------------------------------
 # CLI

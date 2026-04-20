@@ -91,7 +91,7 @@ HazardSeverity ──► RiskLevel ◄── HomeFloor
 | 3     | Weather data layer              | **Done**      |
 | 4     | ML threat classifier            | **Done**      |
 | 5     | Bayesian risk engine            | **Done**      |
-| 6     | Planner                         | Not started   |
+| 6     | Planner                         | **Done**      |
 | 7     | Output layer                    | Not started   |
 | 8     | Main loop                       | Not started   |
 | 9     | Demo + write-up                 | Not started   |
