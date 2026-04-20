@@ -89,7 +89,7 @@ HazardSeverity ──► RiskLevel ◄── HomeFloor
 | 1     | Scaffolding                     | **Done**      |
 | 2     | User profile                    | **Done**      |
 | 3     | Weather data layer              | **Done**      |
-| 4     | ML threat classifier            | Not started   |
+| 4     | ML threat classifier            | **Done**      |
 | 5     | Bayesian risk engine            | Not started   |
 | 6     | Planner                         | Not started   |
 | 7     | Output layer                    | Not started   |
