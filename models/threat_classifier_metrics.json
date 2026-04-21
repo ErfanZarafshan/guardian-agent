@@ -1,0 +1,26 @@
+{
+  "n_train": 85120,
+  "n_test": 21281,
+  "positive_rate_train": 0.008928571428571428,
+  "positive_rate_test": 0.008928151872562379,
+  "accuracy": 0.6957379822376768,
+  "f1": 0.040882832173011405,
+  "roc_auc": 0.7585144823559063,
+  "avg_precision": 0.02920697429592388,
+  "confusion_matrix": [
+    [
+      14668,
+      6423
+    ],
+    [
+      52,
+      138
+    ]
+  ],
+  "best_params": {
+    "clf__learning_rate": 0.05,
+    "clf__max_depth": 3,
+    "clf__n_estimators": 100
+  },
+  "sklearn_version": "1.8.0"
+}

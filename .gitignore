@@ -45,6 +45,9 @@ data/processed/*
 
 models/*
 !models/.gitkeep
+# Keep the trained classifier so the deployed demo has the ML signal.
+!models/threat_classifier.joblib
+!models/threat_classifier_metrics.json
 
 # --- Local user profile (may contain PII) ---
 config/my_profile.json
