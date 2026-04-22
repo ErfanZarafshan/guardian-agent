@@ -1,0 +1,430 @@
+\documentclass{article}
+
+% Recommended, but optional, packages for figures and better typesetting:
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{booktabs} % for professional tables
+
+% hyperref makes hyperlinks in the resulting PDF.
+% If your build breaks (sometimes temporarily if a hyperlink spans a page)
+% please comment out the following usepackage line and replace
+% \usepackage{icml2026} with \usepackage[nohyperref]{icml2026} above.
+\usepackage{hyperref}
+
+% Attempt to make hyperref and algorithmic work together better:
+\newcommand{\theHalgorithm}{\arabic{algorithm}}
+
+% Use the following line for the initial blind version submitted for review:
+%\usepackage{icml2026}
+
+% If accepted, instead use the following line for the camera-ready submission:
+\usepackage[accepted]{icml2026}
+
+% For theorems and such
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+\usepackage{amsthm}
+
+% if you use cleveref..
+\usepackage[capitalize,noabbrev]{cleveref}
+
+%%%%%%%%%%%%%%%%%%%% Theorems-like Environments %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% (only used here for completeness; not actually used in our paper)
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{assumption}[theorem]{Assumption}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% The \icmltitle you define below is probably too long as a header.
+% Therefore, a short form for the running title is supplied here:
+\icmltitlerunning{Guardian Agent: A Bayesian Personalized Weather Hazard Safety Agent}
+
+\begin{document}
+
+\twocolumn[
+\icmltitle{Guardian Agent: A Bayesian Personalized\\
+           Weather Hazard Safety Agent}
+
+\begin{icmlauthorlist}
+\icmlauthor{Erfan Zarafshan}{lsu}
+\icmlauthor{Maby Gavilan Abanto}{lsu}
+\end{icmlauthorlist}
+
+\icmlaffiliation{lsu}{Division of Computer Science and Engineering,
+                       Louisiana State University, Baton Rouge, LA, USA}
+
+\icmlcorrespondingauthor{Erfan Zarafshan}{ezaraf1@lsu.edu}
+
+\icmlkeywords{Bayesian networks, intelligent agents, weather hazards,
+              gradient boosting, decision support}
+
+\vskip 0.3in
+]
+
+\printAffiliationsAndNotice{}
+
+\begin{abstract}
+Existing weather emergency alert systems are reactive and broadcast-style:
+the same warning text is sent to every recipient in an affected region,
+regardless of their personal vulnerability. We present \emph{Guardian
+Agent}, a context-aware AI system that combines real-time weather data,
+a gradient-boosted hazard classifier trained on the NOAA Storm Events
+Database, and a discrete Bayesian network with ten nodes to produce a
+personalized risk posterior, which a deterministic rule planner then
+maps to an ordered list of recommended actions. The system was implemented
+in Python, deployed as an interactive web demonstration, and evaluated on
+hold-out data and four hazard scenarios. The trained classifier reaches
+ROC-AUC $= 0.759$ on $21{,}281$ held-out county-day cells, and the
+end-to-end system produces visibly distinct recommendations for users
+with different vulnerability profiles facing identical hazards,
+demonstrating the value of personalized probabilistic reasoning over
+generic broadcast warnings.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:intro}
+
+Severe weather events kill hundreds and cause billions of dollars in
+property damage in the United States each year. The dominant
+public-warning mechanism, Wireless Emergency Alerts (WEA), pushes the
+same short message to every cell phone in a geographic
+polygon~\cite{fcc_wea}. Two recipients in the same neighborhood --- one
+on the third floor of a sturdy building with a high-clearance vehicle,
+the other on the ground floor with a mobility limitation and no car ---
+receive identical instructions, even though the appropriate response is
+materially different. The result is a well-documented problem of
+\emph{alert fatigue} in which recipients learn to discount warnings that
+do not appear to apply to them.
+
+This paper addresses that gap by treating the safety-recommendation
+problem as a probabilistic inference task over user-specific evidence.
+Our system, \textbf{Guardian Agent}, observes the world through public
+weather APIs, fuses those observations with a learned threat signal and
+a structured user profile, and computes a posterior over four risk
+levels \{Low, Moderate, High, Critical\} for that specific user. A rule
+planner then converts the argmax of the posterior into an ordered list
+of actions chosen from a fixed catalog (notify, shelter, evacuate,
+activate flood lights, etc.), each annotated with a human-readable
+rationale.
+
+\textbf{Contributions.} (1) An end-to-end goal-based agent
+architecture, in the sense of Russell and Norvig
+(\citeyear{russell2020ai}, Ch.~2), that integrates an ML classifier and a
+hand-engineered Bayesian network into a single perceive-reason-act
+loop. (2) A discrete Bayesian network whose conditional probability
+tables are specified by domain-knowledge scoring functions rather than
+enumerated by hand, scaling to ten nodes while remaining auditable. (3)
+A publicly deployed interactive demonstration at
+\url{https://guardianagent.streamlit.app/} that lets visitors explore
+both real and hypothetical hazards under multiple personal profiles.
+
+\section{Methodology}
+\label{sec:methodology}
+
+\subsection{Architecture overview}
+
+Figure~\ref{fig:architecture} shows Guardian Agent's perceive--reason--act
+cycle. Each component is a Python module under
+\texttt{src/guardian/}; modules are loosely coupled through typed
+\texttt{pydantic} dataclasses so that each layer can be tested and
+swapped independently.
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.95\columnwidth}{\centering\small
+\textbf{PERCEIVE}\\
+NWS API~\cite{nws_api} $+$ OpenWeatherMap~\cite{owm_api}\\
+$\downarrow$\\
+\textbf{REASON}\\
+ML threat classifier (sklearn) $+$\\
+Bayesian network (pgmpy) $+$ User profile\\
+$\downarrow$\\
+\textbf{ACT}\\
+Rule planner $\rightarrow$ Console / SMS / Smart-home dispatchers
+}}
+\caption{Architecture. Each layer is a separate Python module
+communicating through typed dataclasses.}
+\label{fig:architecture}
+\end{figure}
+
+\subsection{Perception layer}
+
+The perception layer queries two complementary sources. The U.S.
+National Weather Service API~\cite{nws_api} provides authoritative
+hazard \emph{alerts} (event name, severity, urgency, certainty)
+indexed by zone code; OpenWeatherMap~\cite{owm_api} provides current
+\emph{conditions} (temperature, wind speed, precipitation rate,
+humidity). An aggregator merges both into a single
+\texttt{WeatherObservation} record. If either source fails, the system
+falls back to the other and logs a \texttt{partial observation} flag
+rather than crashing.
+
+\subsection{Threat classifier}
+\label{sec:classifier}
+
+The classifier is trained to predict, given a (county, day) cell, the
+probability that any severe weather event will occur in the
+following 24 hours. Training data is the NOAA Storm Events
+Database~\cite{noaa_storm_events}: we used 2018--2024 events from
+five Gulf Coast states (LA, TX, MS, AL, FL), yielding $106{,}401$
+event records. We synthesized one positive cell per event and
+sampled negative cells uniformly from the same county-time
+distribution, producing $106{,}401$ training rows after class-balancing
+weights are applied.
+
+Features are intentionally shallow: month and day-of-year (cyclically
+encoded as $\sin/\cos$), county FIPS code (categorical), state
+indicator, and a 30-day rolling event count for the same county. We
+deliberately avoid radar or atmospheric soundings to keep the
+prototype reproducible from a free public dataset; a production system
+would naturally consume those.
+
+The model is a Gradient Boosting
+Classifier~\cite{friedman2001greedy} from
+\texttt{scikit-learn}~\cite{pedregosa2011scikit}. Hyperparameters were
+selected by 5-fold stratified cross-validation over a small grid
+(\texttt{n\_estimators} $\in \{50,100,200\}$, \texttt{max\_depth} $\in
+\{3,5\}$, \texttt{learning\_rate} $\in \{0.05,0.1\}$). Class imbalance
+($\sim 1\%$ positive rate) is handled by inverse-frequency
+\texttt{sample\_weight}.
+
+\subsection{Bayesian risk engine}
+\label{sec:bayes}
+
+The reasoning core is a discrete Bayesian network with 10 nodes
+arranged as a polytree, implemented in
+\texttt{pgmpy}~\cite{ankan2024pgmpy,ankan2015pgmpy}. The network
+fuses three classes of evidence:
+
+\begin{itemize}\itemsep -2pt
+\item \textbf{Hazard evidence} from NWS alerts: \texttt{HazardSeverity}
+  (5 states), \texttt{Urgency} (5 states).
+\item \textbf{Environmental evidence} from OpenWeatherMap:
+  \texttt{WindCategory}, \texttt{PrecipCategory} (4 states each).
+\item \textbf{Threat-prediction evidence} from the ML classifier:
+  \texttt{EmergingThreat} (3 states, derived by binning the classifier
+  probability).
+\item \textbf{Personal evidence} from the user profile:
+  \texttt{HomeFloor}, \texttt{VehicleClearance}, \texttt{MobilityLimited}.
+\end{itemize}
+
+These eight nodes feed a latent \texttt{HazardImpact} node, which in
+turn determines the query node \texttt{RiskLevel} $\in$
+\{Low, Moderate, High, Critical\}. Inference is exact via
+Variable Elimination (\citealt{koller2009pgm}, Ch.~9), and completes
+in a few milliseconds per query at this network size.
+
+A practical issue with hand-built networks is the combinatorial blowup
+of CPT entries (the parents of \texttt{HazardImpact} alone produce
+$5\!\times\!5\!\times\!4\!\times\!4\!\times\!3 = 1200$ rows). To avoid
+hand-enumeration, we specify each CPT through a small scoring function
+that maps parent assignments to a numeric impact score, then bucketizes
+that score into the child's discrete states. This collapses CPT
+authorship into roughly fifteen lines of readable Python per node and
+produces tables that are internally consistent across parent
+combinations.
+
+\subsection{Action planner}
+
+The planner is intentionally deterministic. It takes the argmax of the
+risk posterior, the user profile, and the active alert and selects
+actions from an 8-element catalog
+$\{$\textsc{notify\_user}, \textsc{notify\_contacts},
+\textsc{recommend\_shelter}, \textsc{recommend\_evacuate},
+\textsc{activate\_flood\_lights}, \textsc{sound\_alarm},
+\textsc{adjust\_thermostat}, \textsc{log\_only}$\}$ across three
+dispatch channels (console, SMS, smart-home). Hazard-specific message
+templates are applied per alert event (e.g., a flash-flood template
+warns about flooded roadways; a tornado template specifies interior
+sheltering). User-preference fields gate non-essential channels:
+quiet-hours suppress \emph{moderate}-level notifications but are
+overridden for \emph{critical} life-safety actions.
+
+Every action carries a \texttt{rationale} string that is written to the
+log alongside the action. This converts the system's behavior into a
+post-hoc auditable transcript --- in our judgment a more important
+property than maximizing recommendation accuracy on a benchmark, given
+the consequences of incorrect emergency advice.
+
+\subsection{Optional LLM explainer}
+
+The deployed web demo offers an optional LLM-powered explainer
+(Anthropic Claude or OpenAI GPT, user-supplied API key) that
+rephrases the planner's output into conversational guidance. The LLM
+\emph{cannot} alter recommendations: it receives the planner's actions
+as input and is instructed via a system prompt to neither contradict
+nor add to them. This keeps the safety-critical reasoning fully
+grounded in the deterministic Bayesian-plus-planner pipeline while
+improving the readability of the explanation for end users.
+
+\section{Experimental Results}
+\label{sec:results}
+
+\subsection{Operational environment}
+
+The system was developed in Python 3.13 on macOS 14.5
+(Apple Silicon). Key libraries:
+\texttt{pgmpy} 1.1, \texttt{scikit-learn} 1.6, \texttt{pandas} 2.2,
+\texttt{pydantic} 2.10, \texttt{streamlit} 1.32, \texttt{plotly} 5.18.
+SMS dispatch is integrated via Twilio in dry-run mode by default; the
+deployed web demo enforces dry-run unconditionally to prevent abuse.
+External data: NOAA Storm Events 2018--2024 (Gulf Coast states),
+NWS-API (live), OpenWeatherMap free-tier (live). Source code at
+\url{https://github.com/ErfanZarafshan/guardian-agent}.
+
+\subsection{Classifier evaluation}
+\label{sec:classifier-eval}
+
+We evaluate the trained Gradient Boosting Classifier on a stratified
+$80/20$ split of the prepared cells.
+
+\begin{table}[h]
+\caption{Threat classifier performance on the held-out test split.}
+\label{tab:clf}
+\centering\small
+\begin{tabular}{lr}
+\toprule
+\textbf{Metric} & \textbf{Value} \\
+\midrule
+Training cells       & $85{,}120$ \\
+Test cells           & $21{,}281$ \\
+Positive base rate   & $\approx 0.9\%$ \\
+Test ROC-AUC         & $\mathbf{0.759}$ \\
+Test accuracy        & $0.696$ \\
+Test F\textsubscript{1} & $0.041$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+ROC-AUC of $0.759$ is well above chance ($0.500$) but well below the
+$0.85\!-\!0.95$ that mature meteorological nowcasting systems achieve
+with radar input. We view this as the honest ceiling of a
+calendar-and-location-only feature set; the Bayesian fusion downstream
+of the classifier compensates partially by leaning more heavily on
+NWS alert evidence when the classifier signal is weak.
+
+The very low F\textsubscript{1} reflects the rare-event nature of the
+task: the classifier rarely predicts a positive at the default $0.5$
+threshold. Operationally we do not threshold; we bin the classifier
+probability into three buckets (Low, Moderate, High) and feed those as
+discrete \texttt{EmergingThreat} evidence into the Bayesian network,
+which is what actually drives downstream behavior.
+
+\subsection{End-to-end personalization}
+\label{sec:personalization}
+
+The decisive test of personalization is whether the same hazard
+produces different recommendations for different users.
+Table~\ref{tab:scenarios} reports posteriors for two reference
+profiles --- \emph{Alex} (third-floor apartment, owns vehicle, no
+medical limitations) and \emph{Sam} (ground-floor apartment in flood
+zone AE, no vehicle, mobility-limited) --- across four scenarios.
+
+\begin{table}[h]
+\caption{Posterior probability of each \texttt{RiskLevel} state by
+scenario, for two contrasting user profiles. Argmax in \textbf{bold}.
+``Argmax flip'' indicates that the planner selects a strictly different
+action set for the two users.}
+\label{tab:scenarios}
+\centering\footnotesize
+\begin{tabular}{lcccc}
+\toprule
+& Low & Mod. & High & Crit. \\
+\midrule
+\multicolumn{5}{l}{\textit{Clear day}} \\
+~~Alex                & \textbf{.81} & .13 & .05 & .01 \\
+~~Sam                 & \textbf{.78} & .12 & .07 & .03 \\
+\midrule
+\multicolumn{5}{l}{\textit{Flash Flood Watch} \quad (argmax flip)} \\
+~~Alex                & .26 & \textbf{.37} & .27 & .11 \\
+~~Sam                 & .13 & .22 & \textbf{.38} & .28 \\
+\midrule
+\multicolumn{5}{l}{\textit{Tornado Warning}} \\
+~~Alex                & .02 & .12 & .37 & \textbf{.48} \\
+~~Sam                 & .00 & .07 & .32 & \textbf{.61} \\
+\midrule
+\multicolumn{5}{l}{\textit{Tropical Storm Warning} \quad (argmax flip)} \\
+~~Alex                & .06 & .19 & \textbf{.39} & .37 \\
+~~Sam                 & .02 & .09 & .34 & \textbf{.56} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+In two of four scenarios (Flash Flood Watch and Tropical Storm
+Warning) the posterior argmax differs between Alex and Sam. Because
+the planner conditions on the argmax, this difference cascades into a
+strictly different action set: Sam receives a shelter recommendation
+where Alex receives only a notification, and Sam's higher-priority
+contact list is paged where Alex's is not. In the Tornado scenario
+both users are placed at Critical, but Sam's posterior assigns
+$\sim 13$ percentage points more mass to Critical, reflecting the
+amplifying effect of mobility limitation on tornado outcomes.
+
+\subsection{Live agent and dispatch behaviour}
+
+Running the agent against live NWS and OpenWeatherMap data for our
+profile address in Baton Rouge, LA on a calm afternoon produced a
+posterior of \{Low: $0.485$, Moderate: $0.319$, High: $0.138$,
+Critical: $0.057$\}. A subsequent three-cycle continuous run with a
+60-second polling interval verified the deduplication logic: the
+fingerprint (active-alert events $\times$ argmax) matched between
+cycles 2 and 3, suppressing $N \!>\! 0$ non-console actions per
+duplicate cycle while keeping the console heartbeat alive. This
+behavior is essential for production deployment: without it, an
+hour-long flash flood warning would generate twelve identical SMS
+messages to each contact.
+
+\subsection{Test coverage and code quality}
+
+The code base ships with $239$ unit and integration tests in $9$ test
+files exercising every layer (profile validation $27$ tests, weather
+parsers $41$, classifier $33$, Bayesian engine $21$, risk engine
+integration $14$, planner $37$, dispatchers $19$, agent loop $15$,
+plus smoke tests). All pass on Python 3.13, including end-to-end
+tests that mock the weather aggregator and exercise the full
+perceive--reason--act loop.
+
+\section{Conclusions and Future Work}
+\label{sec:conclusion}
+
+Guardian Agent shows that combining classical probabilistic reasoning
+with modern ML and modern web tooling produces a system that
+\emph{differentiates} its safety guidance based on user-specific
+factors --- the gap that current broadcast emergency alerts leave
+open. The Bayesian network is small enough to be auditable and large
+enough to capture the interaction between hazard severity, ML threat
+prediction, and personal vulnerability; the rule planner is
+deterministic and explicable, with every action carrying a written
+rationale; and an optional LLM explainer makes the resulting
+guidance conversational without subverting the safety-critical
+reasoning underneath.
+
+The most valuable extensions, in priority order, would be
+(1) replacing the calendar-and-location-only classifier features with
+NEXRAD radar reflectivity nowcasts to lift ROC-AUC into the
+$0.85\!+$ band; (2) shipping the smart-home dispatcher as a real
+Alexa Skills Kit integration so the existing
+\texttt{SmartHomeDispatcher} interface can be exercised end-to-end on
+a real device; (3) replacing the unconditional dry-run constraint on
+the deployed web demo with per-user verified-recipient SMS, allowing
+users to receive real notifications while still preventing abuse; and
+(4) learning the Bayesian network's CPT scoring functions from
+historical NWS alert + outcome data instead of specifying them by
+hand. None of these change the architecture --- they replace specific
+components behind unchanged interfaces, which is precisely the
+property the typed-dataclass module boundaries were designed to
+enable.
+
+\bibliography{refs}
+\bibliographystyle{icml2026}
+
+\end{document}
