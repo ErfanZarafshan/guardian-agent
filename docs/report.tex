@@ -97,31 +97,31 @@ Severe weather events kill hundreds and cause billions of dollars in
 property damage in the United States each year. The dominant
 public-warning mechanism, Wireless Emergency Alerts (WEA), pushes the
 same short message to every cell phone in a geographic
-polygon~\cite{fcc_wea}. Two recipients in the same neighborhood --- one
-on the third floor of a sturdy building with a high-clearance vehicle,
-the other on the ground floor with a mobility limitation and no car ---
-receive identical instructions, even though the appropriate response is
-materially different. The result is a well-documented problem of
-\emph{alert fatigue} in which recipients learn to discount warnings that
+polygon~\cite{fcc_wea}. Two recipients in the same neighborhood: one
+living on the third floor of a sturdy building with a high-clearance vehicle;
+the other on the ground floor with a mobility limitation and no car, 
+receive identical instructions, even though the appropriate response should be different.
+The result is a well-documented problem of
+\emph{alert fatigue} \cite{rush2016fatigue,sutton2026fatigueOverAlert,
+gani2025fatigue,newton2026fatigue}
+in which recipients learn to discount warnings that
 do not appear to apply to them.
 
-This paper addresses that gap by treating the safety-recommendation
-problem as a probabilistic inference task over user-specific evidence.
-Our system, \textbf{Guardian Agent}, observes the world through public
-weather APIs, fuses those observations with a learned threat signal and
-a structured user profile, and computes a posterior over four risk
+This paper addresses the mentioned gap by treating this generic recommendation
+problems as a probabilistic inference task over evidence based on the user needs.
+Our system, \textbf{Guardian Agent}, gets a sense of the current weather events through public
+weather APIs, uses those observations along with a learned threat signal and user profile,
+and computes a posterior over four risk
 levels \{Low, Moderate, High, Critical\} for that specific user. A rule
 planner then converts the argmax of the posterior into an ordered list
 of actions chosen from a fixed catalog (notify, shelter, evacuate,
 activate flood lights, etc.), each annotated with a human-readable
 rationale.
 
-\textbf{Contributions.} (1) An end-to-end goal-based agent
-architecture, in the sense of Russell and Norvig
-(\citeyear{russell2020ai}, Ch.~2), that integrates an ML classifier and a
-hand-engineered Bayesian network into a single perceive-reason-act
-loop. (2) A discrete Bayesian network whose conditional probability
-tables are specified by domain-knowledge scoring functions rather than
+\textbf{Contributions.} (1) An agent architecture that integrates a 
+machine learning classifier and a Bayesian network into a single
+perceive-reason-act loop. (2) A discrete Bayesian network whose
+conditional probability tables are specified by scoring functions rather than
 enumerated by hand, scaling to ten nodes while remaining auditable. (3)
 A publicly deployed interactive demonstration at
 \url{https://guardianagent.streamlit.app/} that lets visitors explore
@@ -130,15 +130,121 @@ both real and hypothetical hazards under multiple personal profiles.
 \section{Methodology}
 \label{sec:methodology}
 
-\subsection{Architecture overview}
+\subsection{Theoretical background}
+\subsubsection{Gradient Boosting Machines}
+The Gradient Bossting Machines~\cite{friedman2001greedy} are a machine learning algorithm
+that adds new models, known as learners, in a sequential fashion.
+The procedure of learning consists on providing the resulting gradients
+from the previous learners to perform the optimization
+of an arbitrary (but differentiable) loss function.
 
-Figure~\ref{fig:architecture} shows Guardian Agent's perceive--reason--act
+% Consider a dataset $(x,y)^{N}_{i=1}$ where $x$ is the set of explanatory variables,
+% and $y$ is the set of labels. Let $\Psi$ be the selected loss function that should be
+% minimized: $$\widehat{f} = \arg\min_{f(x)}\Psi(y,f(x))$$
+
+Consider $(\mathbf{x}_i, y_i)_{i=1}^{N}$ be the training
+set. The goal is to find a function $f(\mathbf{x})$ that minimises an
+expected loss $\mathbb{E}[L(y, F(\mathbf{x}))]$. GBMs approximate
+this minimisation in function space by iterative gradient descent:
+
+\begin{equation}
+  f_m(\mathbf{x}) = f_{m-1}(\mathbf{x}) + \rho \, h_m (\mathbf{x},\theta),
+  \quad m = 1, \ldots, M
+\end{equation}
+
+where $\rho \in (0,1]$ is the \emph{learning rate} (or shrinkage), and
+$h_m$ is a base learner fitted to the \emph{pseudo-residuals}
+
+\begin{equation}
+  r_{im} = -\left[\frac{\partial L(y_i,\, f(\mathbf{x}_i))}
+                       {\partial f(\mathbf{x}_i)}\right]_{f=f_{m-1}}.
+\end{equation}
+
+The pseudo-residuals represent the negative gradient of the loss
+with respect to the current prediction; fitting a tree to them is
+therefore a functional gradient-descent step.
+
+Regularisation is achieved through the learning rate $\rho$, the
+maximum tree depth, and sub-sampling of observations and
+features~\cite{Natekin2013}. The pseudo-algorithm is described below:%\ref{algo:GBM}
+% \vspace{-5pt}
+\begin{center}
+\begin{minipage}{\columnwidth}
+\hrule \vspace{2pt}
+\textbf{Algorithm 1:} Friedman's Gradient Boost Algorithm
+\hrule \vspace{3pt}
+\begin{tabbing}
+
+  \hspace{0.8cm} \= \hspace{0.4cm} \= \hspace{0.5cm} \= \kill % Define tab stops
+    \textbf{Inputs:} \\
+    - input data $(x,y)^{N}_{i=1}$ \\
+    - number of iterations $M$ \\
+    - arbitrary function loss-function $\Psi(y,f)$ \\
+    - choice of base learner model $h(x,\theta)$ \\ 
+    \textbf{Algorithm:} \\
+    1. initialize $\widehat{f_{0}}$ with a constant. \\
+    2. \textbf{for} $t = 1$ to $M$ \textbf{do}: \\
+    3. \> compute the negative gradient $g_{t}(x)$ \\ 
+    4. \> fit a new base-learner function $h(x, \theta_t)$ \\
+    5. \> find the best gradient descent step-size $\rho_t$:\\
+       \> $\rho_{t} = \arg\min_{\rho}\sum\limits_{i=1}^{N}\Psi \left[ y_i, \widehat{f}_{t-1}(x_i) + \rho h (x_i , \theta_t) \right]$ \\
+    6. \> update the function estimate: \\
+       \> $\widehat{f}_t \leftarrow \widehat{f}_{t-1} + \rho_t h(x,\theta_t)$ \\
+    7. \textbf{end for}
+\end{tabbing}
+\hrule
+\label{algo:GBM}
+\end{minipage}
+\end{center}
+
+\subsubsection{Bayesian Networks}
+A Bayesian Network (BN) is a probabilistic graphical model that
+encodes the joint distribution over a set of random variables through
+a directed acyclic graph (DAG) and a collection of conditional
+probability tables (CPTs) \cite{russell2020ai}.
+
+\subsubsection*{Structure}
+
+Let $\mathbf{X} = \{X_1, \ldots, X_d\}$ be a set of discrete random
+variables. A BN is a pair $\mathcal{B} = (\mathcal{G}, \boldsymbol{\Theta})$
+where $\mathcal{G} = (\mathbf{X}, \mathcal{E})$ is a DAG whose nodes
+correspond to variables and whose edges encode direct dependencies,
+and $\boldsymbol{\Theta}$ is the set of CPTs. The DAG encodes the
+\emph{Markov condition}: every variable is conditionally independent
+of its non-descendants given its parents $\mathrm{Pa}(X_i)$.
+
+\subsubsection*{Joint distribution}
+
+Applying the chain rule and using the Markov condition yields
+the fundamental factorisation
+
+\begin{equation}
+  P(X_1, \ldots, X_d) = \prod_{i=1}^{d} P\!\left(X_i \mid \mathrm{Pa}(X_i)\right).
+\end{equation}
+
+For a discrete BN (as implemented in \texttt{pgmpy}'s
+\texttt{DiscreteBayesianNetwork}), each factor
+$P(X_i \mid \mathrm{Pa}(X_i))$ is stored as a CPT whose rows index
+the parent configurations and whose columns index the states of $X_i$.
+
+\subsubsection*{Inference}
+
+Given evidence $\mathbf{e}$ on a subset of variables, \emph{posterior
+inference} computes $P(X_q \mid \mathbf{e})$ for a query variable
+$X_q$. Exact methods such as variable elimination and the junction-tree
+algorithm exploit the factorisation to avoid enumerating the full joint
+\cite{koller2009pgm}; approximate methods, such as MCMC, are used when the graph is too dense for exact
+treatment.
+
+
+\subsection{Architecture overview}
+In figure~\ref{fig:architecture}, the Guardian Agent's perceive--reason--act
 cycle. Each component is a Python module under
 \texttt{src/guardian/}; modules are loosely coupled through typed
 \texttt{pydantic} dataclasses so that each layer can be tested and
 swapped independently.
 
-\begin{figure}[t]
+\begin{figure}[H]
 \centering
 \fbox{\parbox{0.95\columnwidth}{\centering\small
 \textbf{PERCEIVE}\\
@@ -158,8 +264,8 @@ communicating through typed dataclasses.}
 
 \subsection{Perception layer}
 
-The perception layer queries two complementary sources. The U.S.
-National Weather Service API~\cite{nws_api} provides authoritative
+The perception layer queries two additional sources. The U.S.
+National Weather Service API~\cite{nws_api} provides
 hazard \emph{alerts} (event name, severity, urgency, certainty)
 indexed by zone code; OpenWeatherMap~\cite{owm_api} provides current
 \emph{conditions} (temperature, wind speed, precipitation rate,
@@ -191,7 +297,7 @@ would naturally consume those.
 The model is a Gradient Boosting
 Classifier~\cite{friedman2001greedy} from
 \texttt{scikit-learn}~\cite{pedregosa2011scikit}. Hyperparameters were
-selected by 5-fold stratified cross-validation over a small grid
+selected by cross-validation (5 folds) over a small grid
 (\texttt{n\_estimators} $\in \{50,100,200\}$, \texttt{max\_depth} $\in
 \{3,5\}$, \texttt{learning\_rate} $\in \{0.05,0.1\}$). Class imbalance
 ($\sim 1\%$ positive rate) is handled by inverse-frequency
@@ -203,7 +309,7 @@ selected by 5-fold stratified cross-validation over a small grid
 The reasoning core is a discrete Bayesian network with 10 nodes
 arranged as a polytree, implemented in
 \texttt{pgmpy}~\cite{ankan2024pgmpy,ankan2015pgmpy}. The network
-fuses three classes of evidence:
+combines three classes of evidence:
 
 \begin{itemize}\itemsep -2pt
 \item \textbf{Hazard evidence} from NWS alerts: \texttt{HazardSeverity}
@@ -237,16 +343,16 @@ combinations.
 
 The planner is intentionally deterministic. It takes the argmax of the
 risk posterior, the user profile, and the active alert and selects
-actions from an 8-element catalog
+actions from a catalog of 8 elements:
 $\{$\textsc{notify\_user}, \textsc{notify\_contacts},
 \textsc{recommend\_shelter}, \textsc{recommend\_evacuate},
 \textsc{activate\_flood\_lights}, \textsc{sound\_alarm},
 \textsc{adjust\_thermostat}, \textsc{log\_only}$\}$ across three
-dispatch channels (console, SMS, smart-home). Hazard-specific message
-templates are applied per alert event (e.g., a flash-flood template
+dispatch channels (console, SMS, smart-home). Message templates related
+to hazard are applied per alert event (e.g., a flash flood template
 warns about flooded roadways; a tornado template specifies interior
-sheltering). User-preference fields gate non-essential channels:
-quiet-hours suppress \emph{moderate}-level notifications but are
+sheltering). User-preference fields gate non essential channels:
+quiet-hours suppress \emph{moderate} level notifications but are
 overridden for \emph{critical} life-safety actions.
 
 Every action carries a \texttt{rationale} string that is written to the
@@ -255,16 +361,16 @@ post-hoc auditable transcript --- in our judgment a more important
 property than maximizing recommendation accuracy on a benchmark, given
 the consequences of incorrect emergency advice.
 
-\subsection{Optional LLM explainer}
+% \subsection{Optional LLM explainer}
 
-The deployed web demo offers an optional LLM-powered explainer
-(Anthropic Claude or OpenAI GPT, user-supplied API key) that
-rephrases the planner's output into conversational guidance. The LLM
-\emph{cannot} alter recommendations: it receives the planner's actions
-as input and is instructed via a system prompt to neither contradict
-nor add to them. This keeps the safety-critical reasoning fully
-grounded in the deterministic Bayesian-plus-planner pipeline while
-improving the readability of the explanation for end users.
+% The deployed web demo offers an optional LLM-powered explainer
+% (Anthropic Claude or OpenAI GPT, user-supplied API key) that
+% rephrases the planner's output into conversational guidance. The LLM
+% \emph{cannot} alter recommendations: it receives the planner's actions
+% as input and is instructed via a system prompt to neither contradict
+% nor add to them. This keeps the safety-critical reasoning fully
+% grounded in the deterministic Bayesian-plus-planner pipeline while
+% improving the readability of the explanation for end users.
 
 \section{Experimental Results}
 \label{sec:results}
@@ -322,7 +428,7 @@ which is what actually drives downstream behavior.
 \subsection{End-to-end personalization}
 \label{sec:personalization}
 
-The decisive test of personalization is whether the same hazard
+The crucial test of personalization is whether the same hazard
 produces different recommendations for different users.
 Table~\ref{tab:scenarios} reports posteriors for two reference
 profiles --- \emph{Alex} (third-floor apartment, owns vehicle, no
@@ -361,8 +467,8 @@ action set for the two users.}
 
 In two of four scenarios (Flash Flood Watch and Tropical Storm
 Warning) the posterior argmax differs between Alex and Sam. Because
-the planner conditions on the argmax, this difference cascades into a
-strictly different action set: Sam receives a shelter recommendation
+the planner conditions on the argmax, this difference falls into a
+notorious different action set: Sam receives a shelter recommendation
 where Alex receives only a notification, and Sam's higher-priority
 contact list is paged where Alex's is not. In the Tornado scenario
 both users are placed at Critical, but Sam's posterior assigns
@@ -376,10 +482,9 @@ profile address in Baton Rouge, LA on a calm afternoon produced a
 posterior of \{Low: $0.485$, Moderate: $0.319$, High: $0.138$,
 Critical: $0.057$\}. A subsequent three-cycle continuous run with a
 60-second polling interval verified the deduplication logic: the
-fingerprint (active-alert events $\times$ argmax) matched between
+fingerprint (active alert events $\times$ argmax) matched between
 cycles 2 and 3, suppressing $N \!>\! 0$ non-console actions per
-duplicate cycle while keeping the console heartbeat alive. This
-behavior is essential for production deployment: without it, an
+duplicate cycle while keeping the console alive, avoiding that an
 hour-long flash flood warning would generate twelve identical SMS
 messages to each contact.
 
@@ -396,33 +501,30 @@ perceive--reason--act loop.
 \section{Conclusions and Future Work}
 \label{sec:conclusion}
 
-Guardian Agent shows that combining classical probabilistic reasoning
-with modern ML and modern web tooling produces a system that
-\emph{differentiates} its safety guidance based on user-specific
-factors --- the gap that current broadcast emergency alerts leave
-open. The Bayesian network is small enough to be auditable and large
-enough to capture the interaction between hazard severity, ML threat
+Guardian Agent shows that combining probabilistic reasoning
+with ML and modern web tooling produces a system that
+differentiates its safety guidance based on user-specific
+factors, gap that current broadcast emergency alerts do
+not address. The implemented Bayesian network is small enough
+to be auditable and large enough to capture
+the interaction between hazard severity, ML threat
 prediction, and personal vulnerability; the rule planner is
 deterministic and explicable, with every action carrying a written
-rationale; and an optional LLM explainer makes the resulting
-guidance conversational without subverting the safety-critical
-reasoning underneath.
+rationale.
 
 The most valuable extensions, in priority order, would be
 (1) replacing the calendar-and-location-only classifier features with
 NEXRAD radar reflectivity nowcasts to lift ROC-AUC into the
 $0.85\!+$ band; (2) shipping the smart-home dispatcher as a real
 Alexa Skills Kit integration so the existing
-\texttt{SmartHomeDispatcher} interface can be exercised end-to-end on
+\texttt{SmartHomeDispatcher} interface can be applied end-to-end on
 a real device; (3) replacing the unconditional dry-run constraint on
 the deployed web demo with per-user verified-recipient SMS, allowing
 users to receive real notifications while still preventing abuse; and
 (4) learning the Bayesian network's CPT scoring functions from
 historical NWS alert + outcome data instead of specifying them by
-hand. None of these change the architecture --- they replace specific
-components behind unchanged interfaces, which is precisely the
-property the typed-dataclass module boundaries were designed to
-enable.
+hand. None of these change the architecture, they replace specific
+components behind unchanged interfaces.
 
 \bibliography{refs}
 \bibliographystyle{icml2026}

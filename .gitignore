@@ -20,6 +20,7 @@ ENV/
 .idea/
 *.swp
 .DS_Store
+TwilioRecoveryCode/*
 
 # --- Testing / tooling ---
 .pytest_cache/
