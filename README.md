@@ -1,288 +1,166 @@
-# 🛡️ Guardian Agent
+# Guardian Agent
 
-> **A personalized AI safety agent that turns real-time weather data into
-> tailored guidance, grounded in Bayesian probabilistic reasoning.**
+Personalized weather-hazard safety agent for CSC 4444G (Spring 2026, LSU).
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-streamlit.app-FF4B4B?logo=streamlit)](https://guardianagent.streamlit.app/)
-[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-239%20passing-brightgreen)](#testing)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+Live demo: https://guardianagent.streamlit.app/
 
----
+## Authors
 
-**Course:** CSC 4444G Artificial Intelligence — Spring 2026
-**Institution:** Louisiana State University, Division of Computer Science and Engineering
-**Instructor:** Prof. Keith G. Mills
-**Authors:** Erfan Zarafshan, Maby Gavilan Abanto
+- Erfan Zarafshan
+- Maby Gavilan Abanto
 
-📄 **[Read the full report (PDF)](docs/report.pdf)** &nbsp;•&nbsp;
-🎬 **[Try the live demo](https://guardianagent.streamlit.app/)** &nbsp;•&nbsp;
-📊 **[Demo video script](docs/DEMO_VIDEO_SCRIPT.md)**
+Course: CSC 4444G Artificial Intelligence, Spring 2026, LSU.
+Instructor: Prof. Keith G. Mills.
 
----
+## What it does
 
-## What is Guardian Agent?
+Most weather emergency alerts (like the WEA messages that come to your phone) send the same text to everyone in an area. This project tries to do better by combining the live weather data with a profile of the user (where they live, what floor, whether they have a vehicle, medical needs) and producing a risk level and a list of recommended actions that are specific to that person.
 
-The U.S. Wireless Emergency Alert system buzzes every phone in a polygon
-with the same text. A 78-year-old on the ground floor of a flood-prone
-apartment with no car gets the same message as a 25-year-old on the third
-floor with a 4WD pickup. The appropriate response is materially different.
+The reasoning is done by a Bayesian network with 10 nodes (built with pgmpy). Two of the inputs to the network are real-time weather (NWS alerts and OpenWeatherMap conditions) and the output of a gradient-boosted classifier we trained on NOAA Storm Events data. The other inputs come from the user profile.
 
-Guardian Agent fuses three signals — **live weather data** (NWS + OWM), an
-**ML threat classifier** trained on NOAA Storm Events, and a **structured
-user profile** — through a **10-node Bayesian network** to produce a
-*personal* posterior over four risk levels (Low/Moderate/High/Critical).
-A deterministic rule planner then maps the posterior to a prioritized
-list of actions: notify, shelter, evacuate, sound alarm, message
-contacts, etc., each with a written rationale.
+After the network produces a posterior over four risk levels (Low, Moderate, High, Critical), a rule-based planner picks actions from a fixed set (notify the user, recommend shelter, recommend evacuation, contact emergency contacts by SMS, sound a smart-home alarm, etc.). Each action is sent to the right output channel: console, Twilio SMS, or a mock smart-home dispatcher.
 
-An optional LLM (Claude or GPT) rephrases the result into plain English.
-The LLM cannot alter recommendations — safety-critical reasoning stays
-inside the deterministic Bayesian + planner pipeline.
+There is also an optional plain-English explainer that uses an LLM (Claude or ChatGPT) to rephrase the result. The LLM only rephrases; it does not change the recommendations.
 
-## Architecture
+## Repo layout
 
 ```
-                         ┌──────────────────────────┐
-  Weather APIs           │                          │
-  (NWS + OWM) ──────────►│   Bayesian Risk Engine   │
-                         │   (10-node DAG, pgmpy)   │
-  ML Threat Classifier ─►│                          │
-  (sklearn, NOAA)        │   exact inference via    │
-                         │   Variable Elimination   │
-  User Profile ─────────►│                          │
-  (pydantic)             └────────────┬─────────────┘
-                                      │
-                                      ▼
-                            ┌────────────────────┐
-                            │   Rule Planner     │
-                            │   8 actions × 3    │
-                            │   channels with    │
-                            │   audit rationale  │
-                            └─────────┬──────────┘
-                                      │
-                       ┌──────────────┼──────────────┐
-                       ▼              ▼              ▼
-                  ┌─────────┐   ┌─────────┐   ┌────────────┐
-                  │ Console │   │   SMS   │   │ Smart Home │
-                  │  rich   │   │ Twilio  │   │   (mock)   │
-                  └─────────┘   └─────────┘   └────────────┘
+src/guardian/
+  agent.py        CLI entry point
+  loop.py         Main perceive-reason-act loop
+  profile.py      User profile schema (pydantic)
+  config.py       Loads .env
+  weather/        NWS + OpenWeatherMap clients
+  risk/           Bayesian network + ML classifier
+  planning/       Action catalog + rule planner
+  output/         SMS / smart-home / console dispatchers
+
+streamlit_app/    Web demo (5 pages)
+scripts/          Training, demo scripts, smoke tests
+tests/            239 tests, 9 files
+models/           Trained classifier (.joblib)
+data/             Storm Events training data, cycle logs
+docs/             Report (.tex + .pdf), architecture notes
+config/           Example .env, example profiles
 ```
 
-## Repository layout
+## Setup
+
+Requires Python 3.11 or newer (we developed on 3.13).
 
 ```
-guardian-agent/
-├── src/guardian/
-│   ├── agent.py              # CLI entry point (check / run)
-│   ├── loop.py               # Core perceive-reason-act cycle
-│   ├── profile.py            # User profile schema (pydantic)
-│   ├── config.py             # Environment + API key management
-│   ├── weather/              # NWS + OWM clients & aggregator
-│   ├── risk/                 # Bayesian network + ML classifier
-│   ├── planning/             # Action catalog + rule planner
-│   └── output/               # SMS / smart-home / console dispatch
-├── streamlit_app/            # Interactive web demo (5 pages)
-├── scripts/                  # Training, demos, smoke tests
-├── tests/                    # 239 tests across 9 files
-├── models/                   # Trained classifier (.joblib)
-├── data/                     # Storm Events training data + cycle logs
-├── docs/                     # Architecture notes + this report
-├── config/                   # Example .env + example profiles
-├── requirements.txt          # Core dependencies
-└── requirements-streamlit.txt
-```
-
----
-
-## Quick start (5 minutes)
-
-### 1. Clone and set up the environment
-
-```bash
 git clone https://github.com/ErfanZarafshan/guardian-agent.git
 cd guardian-agent
 python3 -m venv .venv
-source .venv/bin/activate          # macOS / Linux
-# .venv\Scripts\activate           # Windows
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-> **Python 3.11 or newer required.** Tested on 3.11, 3.12, and 3.13.
+Copy the example env file and add your API keys:
 
-### 2. Configure API keys (free tiers)
-
-Copy the example environment file and fill in your keys:
-
-```bash
+```
 cp config/example.env .env
 ```
 
-Edit `.env`:
+Then open `.env` and set:
 
-```ini
-# OpenWeatherMap free tier — https://openweathermap.org/api
-OWM_API_KEY=your_owm_key_here
+- `OWM_API_KEY` from https://openweathermap.org/api (free tier)
+- `NWS_USER_AGENT` to something like `GuardianAgent/0.1 (your_email@example.com)` (NWS asks for a contact email)
+- Leave `SMS_DRY_RUN=true` unless you set up Twilio (which is optional)
 
-# NWS asks for a contact email in the User-Agent header
-NWS_USER_AGENT=GuardianAgent/0.1 (your_email@example.com)
+Build a profile (interactive prompts) or copy the example:
 
-# Twilio is OPTIONAL — leave SMS_DRY_RUN=true to skip it entirely
-SMS_DRY_RUN=true
-TWILIO_ACCOUNT_SID=
-TWILIO_AUTH_TOKEN=
-TWILIO_FROM_NUMBER=
 ```
-
-> ⚠️ **`SMS_DRY_RUN=true` is the default and recommended setting.** Real
-> SMS is only sent when you explicitly set this to `false` AND provide
-> Twilio credentials.
-
-### 3. Build a user profile
-
-```bash
 python -m guardian.profile_cli interactive --output config/my_profile.json
 ```
 
-Or copy the example:
+or
 
-```bash
+```
 cp config/example_profile.json config/my_profile.json
 ```
 
-### 4. Verify the environment
+Check that everything is wired up:
 
-```bash
+```
 python -m guardian.agent check --profile config/my_profile.json
 ```
 
-Expected output: a config summary plus profile details. You should see
-`OWM configured: True` and `SMS_DRY_RUN: True`.
+## How to run / verify
 
----
+The simplest way to see the project working is the deployed web app: https://guardianagent.streamlit.app/. The Scenario Simulator page is the most informative: pick a hazard like Tornado Warning or Flash Flood Warning and the posterior updates immediately. Switch profiles and the same hazard produces different recommendations.
 
-## How to prove it works
+To run locally:
 
-The grader has **two avenues** to verify the project. Either works.
+**One agent cycle against live weather** (this hits the real NWS and OpenWeatherMap APIs):
 
-### Avenue A — Run it yourself (recommended)
-
-#### Run one end-to-end agent cycle against live weather
-
-```bash
+```
 python -m guardian.agent run \
     --profile config/my_profile.json \
     --model models/threat_classifier.joblib \
     --once
 ```
 
-Expected output: a startup banner, one Cycle #1 with a posterior bar
-chart, dispatched action(s), and a JSON record appended to
-`data/cycles.jsonl`.
+**Reasoning demo** with two contrasting profiles across four hazard scenarios:
 
-#### Run the four-scenario reasoning demo
-
-```bash
+```
 python scripts/risk_demo.py --model models/threat_classifier.joblib
 ```
 
-Shows the Bayesian engine + planner output for two contrasting user
-profiles across four hazard scenarios (clear day, flash flood watch,
-tornado warning, tropical storm warning). Two of the four scenarios
-exhibit *argmax flips* between users — the core personalization result.
+In two of the four scenarios (Flash Flood Watch and Tropical Storm Warning), the two profiles end up at different risk levels even though the weather is identical. This was the main thing we wanted to show.
 
-#### Launch the interactive web app locally
+**Web app locally:**
 
-```bash
+```
 streamlit run streamlit_app/Home.py
 ```
 
-Browser opens at `http://localhost:8501`. Five pages: Profile setup,
-Live Weather, Risk Assessment, Scenario Simulator, About.
+Opens at http://localhost:8501.
 
-### Avenue B — Visit the deployed demo
+## Tests
 
-🌐 **<https://guardianagent.streamlit.app/>**
-
-No installation required. Click through the five pages on the left
-sidebar; the **Scenario Simulator** is the most informative — pick
-"Tornado Warning" or "Flash Flood Warning" and watch the posterior
-react in real time.
-
----
-
-## Testing
-
-```bash
+```
 pytest -q
 ```
 
-Expected: **239 tests pass**.
+Should report 239 passed.
 
-| Test file | Tests | Component |
+| Test file | Tests | What it covers |
 |---|---|---|
-| `test_smoke.py` | 32 | Module import smoke test |
-| `test_profile.py` | 27 | User-profile schema |
-| `test_weather.py` | 41 | NWS + OWM clients |
-| `test_classifier.py` | 33 | ML threat classifier |
-| `test_bayesian.py` | 21 | Bayesian network construction |
-| `test_risk_engine.py` | 14 | End-to-end engine integration |
-| `test_planner.py` | 37 | Rule planner |
-| `test_output.py` | 19 | SMS / smart-home / console dispatchers |
-| `test_loop.py` | 15 | Main agent perceive-reason-act loop |
+| test_smoke.py | 32 | Imports |
+| test_profile.py | 27 | Profile schema |
+| test_weather.py | 41 | NWS + OWM clients |
+| test_classifier.py | 33 | ML classifier |
+| test_bayesian.py | 21 | Bayesian network construction |
+| test_risk_engine.py | 14 | Engine integration |
+| test_planner.py | 37 | Planner |
+| test_output.py | 19 | SMS / smart-home / console dispatch |
+| test_loop.py | 15 | Main loop |
 
----
+## Results
 
-## Key results
-
-- **Trained classifier:** ROC-AUC = **0.759** on 21,281 held-out
-  county-day cells (training set: 85,120 cells from 106k NOAA Storm
-  Events, 5 Gulf Coast states, 2018–2024).
-- **Personalization:** Same hazard, different users → different argmax
-  in 2 of 4 demo scenarios (Flash Flood Watch and Tropical Storm
-  Warning).
-- **Dedup behavior verified:** 3-cycle continuous run with 60-second
-  polling correctly suppresses duplicate non-console actions while
-  maintaining a console heartbeat.
-- **All 239 tests pass** on Python 3.13 / macOS.
-
----
-
-## Documentation
-
-- 📄 [`docs/report.pdf`](docs/report.pdf) — Full ICML-formatted report
-- 🎬 [`docs/DEMO_VIDEO_SCRIPT.md`](docs/DEMO_VIDEO_SCRIPT.md) — Demo screencast script
-- 🏗️ [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Architecture deep-dive
-
----
+- Classifier trained on 85,120 county-day cells from 5 Gulf Coast states (LA, TX, MS, AL, FL), 2018-2024. Test set ROC-AUC = 0.759 on 21,281 held-out cells.
+- Personalization works: same hazard, different profiles, different argmax in 2 of the 4 demo scenarios.
+- Continuous-mode dedup verified: a 3-cycle run at 60-second intervals correctly suppresses duplicate non-console actions when the world hasn't changed.
+- All 239 tests pass on Python 3.13.
 
 ## Limitations
 
-The honest limits, also called out in the report:
+A few things we want to be upfront about:
 
-- **The classifier uses calendar+location features only**, not radar
-  reflectivity. Mature meteorological nowcasting systems hit
-  ROC-AUC 0.85–0.95 with radar; ours sits at 0.76. The Bayesian fusion
-  layer compensates partially by leaning on NWS alert evidence.
-- **Smart-home dispatch is mocked.** A production deployment would swap
-  the mock for a real Alexa Skills Kit integration via the same
-  `SmartHomeDispatcher` interface.
-- **The deployed web demo always operates in SMS dry-run mode** — random
-  visitors should not be able to trigger Twilio sends on the developer's
-  account.
-- **Profiles are not persisted between visits.** Each browser session is
-  fresh.
+- The classifier only uses calendar features (month, day-of-year, county FIPS) and a 30-day rolling event count. It does not use radar. Real meteorological nowcasting systems with radar reach AUC 0.85-0.95; we get 0.76.
+- The smart-home dispatcher is a mock. The interface is set up the way an Alexa Skills Kit integration would need it, but we did not actually deploy a skill.
+- The deployed web app always operates in SMS dry-run mode so that random visitors cannot trigger Twilio sends on our account.
+- User profiles are not persisted between visits to the deployed site.
 
----
+## Documentation
 
-## Acknowledgements
-
-We thank Prof. Keith G. Mills for guidance throughout the semester and
-for reviewing the project proposal. We thank the National Weather
-Service and OpenWeatherMap for providing free public weather APIs, and
-NOAA for maintaining the Storm Events Database used to train the
-classifier.
+- `docs/report.pdf`: full project report (ICML format)
+- `docs/report.tex`, `docs/refs.bib`: LaTeX source
+- `docs/ARCHITECTURE.md`: more detail on each module
+- `docs/REPORT_BUILD.md`: how to rebuild the report PDF
+- `docs/DEMO_VIDEO_SCRIPT.md`: script for the demo video
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE) for details.
+MIT.
