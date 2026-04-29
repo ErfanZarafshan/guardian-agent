@@ -21,6 +21,14 @@
 % If accepted, instead use the following line for the camera-ready submission:
 \usepackage[accepted]{icml2026}
 
+% Override the ICML "Proceedings of..." footer line: this is a course project,
+% not an actual ICML submission. The [accepted] option above is used solely to
+% reveal author names and apply camera-ready styling.
+\makeatletter
+\renewcommand{\ICML@appearing}{\textit{Course project report, CSC~4444G,
+Spring~2026, Louisiana State University.}}
+\makeatother
+
 % For theorems and such
 \usepackage{amsmath}
 \usepackage{amssymb}
