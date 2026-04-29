@@ -4,6 +4,9 @@ Personalized weather-hazard safety agent for CSC 4444G (Spring 2026, LSU).
 
 Live demo: https://guardianagent.streamlit.app/
 
+## Demo Video
+A walkthrough of the system is available at: https://www.youtube.com/watch?v=x_1lZ8YvUxU
+
 ## Authors
 
 - Erfan Zarafshan
